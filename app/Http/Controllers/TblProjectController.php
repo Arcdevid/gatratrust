@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProjectTbl;
-use App\Models\User;
 use App\Models\Kerjaan;
 use App\Models\Pak;
+use App\Models\ProjectTbl;
+use App\Models\User;
+use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,15 +15,15 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Yajra\DataTables\DataTables;
-use App\Traits\LogsActivity;
 
 class TblProjectController extends Controller
 {
-
     use LogsActivity;
+
     public function index()
     {
-        $projects = ProjectTbl::with(['client', 'kerjaan', 'creator'])
+        $projects = ProjectTbl::with(['clients', 'kerjaan', 'creator'])
+            ->when((int) Auth::user()->role_id === 2, fn ($query) => $query->accessibleToClient(Auth::id()))
             ->orderBy('created_at', 'desc')
             ->get();
         $listclient = User::where('role_id', 2)->get();
@@ -41,41 +42,40 @@ class TblProjectController extends Controller
 
     public function getListProject(Request $request)
     {
-        if (!$request->ajax()) {
+        if (! $request->ajax()) {
             abort(404);
         }
 
         $query = ProjectTbl::with([
-            'client',
+            'clients',
             'kerjaan',
             'pics',
             'pak',
-            'invoices.payments', 
+            'invoices.payments',
         ])
             ->select('projects.*')
             ->orderBy('id', 'desc');
 
         if (auth()->user()->role_id == 2) {
-            $query->where('client_id', auth()->id());
+            $query->accessibleToClient(auth()->id());
         }
 
-       
         $yearNow = Carbon::now()->year;
 
-        $years = $request->input('tahun'); 
+        $years = $request->input('tahun');
 
         // Normalisasi jadi array
         if (is_string($years)) {
             // bisa "2024,2025" atau "2025"
             $years = explode(',', $years);
-        } elseif (!is_array($years)) {
+        } elseif (! is_array($years)) {
             $years = [];
         }
 
         // Bersihkan: trim, cast int, buang yang tidak valid
         $years = collect($years)
-            ->map(fn($y) => (int) trim($y))
-            ->filter(fn($y) => $y >= 2000 && $y <= ($yearNow + 5)) // batas aman, silakan ubah
+            ->map(fn ($y) => (int) trim($y))
+            ->filter(fn ($y) => $y >= 2000 && $y <= ($yearNow + 5)) // batas aman, silakan ubah
             ->unique()
             ->values()
             ->all();
@@ -85,28 +85,39 @@ class TblProjectController extends Controller
             $years = [$yearNow];
         }
 
-        $query->whereIn(DB::raw('YEAR(projects.start)'), $years);
+        $query->where(function ($query) use ($years) {
+            foreach ($years as $year) {
+                $query->orWhereYear('projects.start', $year);
+            }
+        });
 
         return DataTables::of($query)
             ->addColumn('project_name', function ($project) {
                 return $project->nama_project ?? '-';
             })
             ->addColumn('client', function ($project) {
-                $name = $project->client->name ?? '-';
-                $company = $project->client->company ?? null;
-                return $company ? "{$name} ({$company})" : $name;
+                if ($project->clients->isEmpty()) {
+                    return '-';
+                }
+
+                return $project->clients->map(function ($client) {
+                    return $client->company
+                        ? "{$client->name} ({$client->company})"
+                        : $client->name;
+                })->implode('; ');
             })
             ->addColumn('total_biaya_project', function ($project) {
                 if (auth()->user()->role_id == 1) {
                     return $project->total_biaya_project;
                 }
+
                 return null;
             })
             ->addColumn('status', function ($project) {
                 $totalInvoice = (float) $project->total_biaya_project;
 
                 $totalPaid = $project->invoices
-                    ->flatMap(fn($inv) => $inv->payments)
+                    ->flatMap(fn ($inv) => $inv->payments)
                     ->sum('amount_paid');
 
                 $remaining = $totalInvoice - $totalPaid;
@@ -119,7 +130,7 @@ class TblProjectController extends Controller
                     return '<span class="badge badge-success">Lunas</span>';
                 }
 
-                return '<span class="badge badge-warning">Sisa: ' . number_format($remaining, 0, ',', '.') . '</span>';
+                return '<span class="badge badge-warning">Sisa: '.number_format($remaining, 0, ',', '.').'</span>';
             })
             ->addColumn('selesai', function ($project) {
                 $listProses = DB::table('kerjaan_list_proses')
@@ -150,15 +161,16 @@ class TblProjectController extends Controller
             ->addColumn('periode', function ($project) {
                 if ($project->start && $project->end) {
                     return '
-                    <small class="d-block">Mulai: ' . $project->start->format('d M Y') . '</small>
-                    <small class="d-block">Selesai: ' . $project->end->format('d M Y') . '</small>
+                    <small class="d-block">Mulai: '.$project->start->format('d M Y').'</small>
+                    <small class="d-block">Selesai: '.$project->end->format('d M Y').'</small>
                 ';
                 }
+
                 return '<span class="text-muted">Belum ditentukan</span>';
             })
             ->addColumn('aksi', function ($project) {
                 $viewBtn = '
-                <a class="btn btn-sm btn-info" href="' . route('projects.show', $project->id) . '">
+                <a class="btn btn-sm btn-info" href="'.route('projects.show', $project->id).'">
                     <i class="fas fa-eye"></i>
                 </a>';
 
@@ -166,28 +178,28 @@ class TblProjectController extends Controller
                     $editBtn = '
                     <button type="button" class="btn btn-sm btn-secondary btn-edit-project"
                         data-toggle="modal" data-target="#EditProjectModal"
-                        data-id="' . $project->id . '"
-                        data-no="' . $project->no_project . '"
-                        data-nama="' . $project->nama_project . '"
-                        data-client="' . $project->client_id . '"
-                        data-kerjaan="' . $project->kerjaan_id . '"
-                        data-deskripsi="' . $project->deskripsi . '"
-                        data-biaya="' . $project->total_biaya_project . '"
-                        data-start="' . optional($project->start)->format('Y-m-d') . '"
-                        data-end="' . optional($project->end)->format('Y-m-d') . '"
-                        data-pics="' . $project->pics->pluck('id')->implode(';') . '"
-                        data-pak="' . ($project->pak_id ?? '') . '"
+                        data-id="'.$project->id.'"
+                        data-no="'.$project->no_project.'"
+                        data-nama="'.$project->nama_project.'"
+                        data-clients="'.$project->clients->pluck('id')->implode(';').'"
+                        data-kerjaan="'.$project->kerjaan_id.'"
+                        data-deskripsi="'.$project->deskripsi.'"
+                        data-biaya="'.$project->total_biaya_project.'"
+                        data-start="'.optional($project->start)->format('Y-m-d').'"
+                        data-end="'.optional($project->end)->format('Y-m-d').'"
+                        data-pics="'.$project->pics->pluck('id')->implode(';').'"
+                        data-pak="'.($project->pak_id ?? '').'"
                     >
                         <i class="fas fa-edit"></i>
                     </button>';
 
                     $deleteBtn = '
                     <button type="button" class="btn btn-sm btn-danger btnDeletProject"
-                        data-id="' . $project->id . '">
+                        data-id="'.$project->id.'">
                         <i class="fas fa-trash"></i>
                     </button>';
 
-                    return $viewBtn . ' ' . $editBtn . ' ' . $deleteBtn;
+                    return $viewBtn.' '.$editBtn.' '.$deleteBtn;
                 }
 
                 return $viewBtn;
@@ -196,9 +208,10 @@ class TblProjectController extends Controller
                 return $project->pak->pak_number ?? '-';
             })
             ->addColumn('pic', function ($project) {
-                if (!$project->pics || $project->pics->isEmpty()) {
+                if (! $project->pics || $project->pics->isEmpty()) {
                     return '-';
                 }
+
                 return $project->pics->pluck('name')->implode(';');
             })
             ->rawColumns(['periode', 'aksi', 'selesai', 'status', 'pic'])
@@ -207,7 +220,7 @@ class TblProjectController extends Controller
 
     public function generateNoProject()
     {
-        $year  = date('Y');
+        $year = date('Y');
         $month = date('m');
 
         $lastProjectThisYear = DB::table('projects')
@@ -217,7 +230,7 @@ class TblProjectController extends Controller
 
         if ($lastProjectThisYear) {
             $lastNumber = (int) explode('/', $lastProjectThisYear->no_project)[0];
-            $newNumber  = $lastNumber + 1;
+            $newNumber = $lastNumber + 1;
         } else {
             $newNumber = 1;
         }
@@ -228,21 +241,21 @@ class TblProjectController extends Controller
         $noProject = "{$formattedNumber}/GPT/{$month}-{$year}";
 
         return response()->json([
-            'no_project' => $noProject
+            'no_project' => $noProject,
         ]);
     }
 
     public function store(Request $request)
     {
-
-        // dd($request->all());
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         try {
             DB::beginTransaction();
 
             $validated = $request->validate([
                 'nama_project' => 'required|string|max:100',
                 'no_project' => 'required|string|unique:projects',
-                'client_id' => 'required|exists:users,id',
+                'client_ids' => 'required|array|min:1',
+                'client_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where('role_id', 2)],
                 'kerjaan_id' => 'required|exists:kerjaans,id',
                 'pak_id' => 'nullable|exists:paks,id',
                 'deskripsi' => 'nullable|string',
@@ -250,12 +263,17 @@ class TblProjectController extends Controller
                 'start' => 'required|date',
                 'end' => 'required|date|after_or_equal:start',
                 'pic_id' => 'required|array|min:1',
-                'pic_id.*' => 'exists:users,id'
+                'pic_id.*' => 'exists:users,id',
             ]);
 
+            $clientIds = array_values($validated['client_ids']);
+            $validated['client_id'] = $clientIds[0];
             $validated['created_by'] = Auth::id();
 
+            unset($validated['client_ids']);
+
             $project = ProjectTbl::create($validated);
+            $project->clients()->sync($clientIds);
 
             $listProses = DB::table('kerjaan_list_proses')
                 ->where('kerjaan_id', $validated['kerjaan_id'])
@@ -277,7 +295,7 @@ class TblProjectController extends Controller
                     'start_action' => null,
                     'end_action' => null,
                     'created_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
                 $startPlan = $currentStartPlan->copy()->addDays($proses->hari);
@@ -288,7 +306,7 @@ class TblProjectController extends Controller
                 return [
                     'project_id' => $project->id,
                     'user_id' => $userId,
-                    'created_at' => now()
+                    'created_at' => now(),
                 ];
             })->toArray();
 
@@ -310,19 +328,27 @@ class TblProjectController extends Controller
 
             return redirect()->route('projects.tampilan')
                 ->with('success', 'Project berhasil ditambahkan');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
 
             if ($request->ajax()) {
-                return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: ' . $e->getMessage()], 500);
+                return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: '.$e->getMessage()], 500);
             }
 
-            return back()->withInput()->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
+            return back()->withInput()->with('error', 'Terjadi kesalahan: '.$e->getMessage());
         }
     }
 
     public function show(ProjectTbl $project)
     {
+        $this->authorizeClientAccess($project);
+
+        $project->loadMissing('clients');
+
         $kerjaanId = $project->kerjaan_id;
         $projectId = $project->id;
 
@@ -349,7 +375,7 @@ class TblProjectController extends Controller
         $stepUrutan = [];
 
         foreach ($processes as $process) {
-            $key = $process->list_proses_id . '-' . $process->urutan;
+            $key = $process->list_proses_id.'-'.$process->urutan;
             $steps[$key] = $process->nama_proses;
             $stepStatuses[$key] = $process->status ?? 'pending';
             $stepProcessIds[$key] = $process->list_proses_id;
@@ -394,14 +420,14 @@ class TblProjectController extends Controller
         ));
     }
 
-
     public function update(Request $request, ProjectTbl $project)
     {
-        // dd($request->all());
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         $validated = $request->validate([
             'nama_project' => 'required|string|max:100',
-            'no_project' => 'required|string|unique:projects,no_project,' . $project->id,
-            'client_id' => 'required|exists:users,id',
+            'no_project' => 'required|string|unique:projects,no_project,'.$project->id,
+            'client_ids' => 'required|array|min:1',
+            'client_ids.*' => ['required', 'integer', 'distinct', Rule::exists('users', 'id')->where('role_id', 2)],
             'kerjaan_id' => 'required|exists:kerjaans,id',
             'pak_id' => 'nullable|exists:paks,id',
             'deskripsi' => 'nullable|string',
@@ -409,71 +435,76 @@ class TblProjectController extends Controller
             'start_project' => 'nullable|date',
             'end_project' => 'nullable|date|after_or_equal:start_project',
             'pics' => 'required|array|min:1',
-            'pics.*' => 'exists:users,id'
+            'pics.*' => 'exists:users,id',
         ]);
 
+        $clientIds = array_values($validated['client_ids']);
+        $validated['client_id'] = in_array($project->client_id, $clientIds)
+            ? $project->client_id : $clientIds[0];
         $validated['start'] = $validated['start_project'] ?? null;
-        $validated['end']   = $validated['end_project'] ?? null;
+        $validated['end'] = $validated['end_project'] ?? null;
 
-        unset($validated['start_project'], $validated['end_project']);
+        unset($validated['client_ids'], $validated['start_project'], $validated['end_project']);
 
         $oldStart = $project->start;
         $oldKerjaanId = $project->kerjaan_id;
 
         $oldData = $project->toArray();
 
-        // Update project
-        $project->update($validated);
+        DB::transaction(function () use ($project, $validated, $clientIds, $oldStart, $oldKerjaanId, $oldData) {
+            // Update project
+            $project->update($validated);
 
-        $project->pics()->sync($validated['pics']);
+            $project->clients()->sync($clientIds);
+            $project->pics()->sync($validated['pics']);
 
-        $startChanged = isset($validated['start']) &&
-            Carbon::parse($validated['start'])->format('Y-m-d') !==
-            Carbon::parse($oldStart)->format('Y-m-d');
+            $startChanged = isset($validated['start']) &&
+                Carbon::parse($validated['start'])->format('Y-m-d') !==
+                Carbon::parse($oldStart)->format('Y-m-d');
 
-        $kerjaanChanged = $validated['kerjaan_id'] != $oldKerjaanId;
+            $kerjaanChanged = $validated['kerjaan_id'] != $oldKerjaanId;
 
-        if ($startChanged || $kerjaanChanged) {
-            // Ambil list proses sesuai kerjaan baru
-            $listProses = DB::table('kerjaan_list_proses')
-                ->where('kerjaan_id', $validated['kerjaan_id'])
-                ->orderBy('urutan', 'asc')
-                ->get();
+            if ($startChanged || $kerjaanChanged) {
+                // Ambil list proses sesuai kerjaan baru
+                $listProses = DB::table('kerjaan_list_proses')
+                    ->where('kerjaan_id', $validated['kerjaan_id'])
+                    ->orderBy('urutan', 'asc')
+                    ->get();
 
-            // Hitung ulang start_plan dan end_plan
-            $startPlan = Carbon::parse($validated['start'] ?? $oldStart);
+                // Hitung ulang start_plan dan end_plan
+                $startPlan = Carbon::parse($validated['start'] ?? $oldStart);
 
-            // Hapus detail lama
-            DB::table('project_details')->where('project_id', $project->id)->delete();
+                // Hapus detail lama
+                DB::table('project_details')->where('project_id', $project->id)->delete();
 
-            // Insert ulang detail dengan plan yang disesuaikan
-            foreach ($listProses as $proses) {
-                $currentStartPlan = $startPlan->copy();
+                // Insert ulang detail dengan plan yang disesuaikan
+                foreach ($listProses as $proses) {
+                    $currentStartPlan = $startPlan->copy();
 
-                DB::table('project_details')->insert([
-                    'project_id' => $project->id,
-                    'kerjaan_list_proses_id' => $proses->list_proses_id,
-                    'urutan_id' => $proses->urutan,
-                    'status' => 'pending',
-                    'start_plan' => $currentStartPlan,
-                    'end_plan' => $currentStartPlan->copy()->addDays($proses->hari - 1),
-                    'start_action' => null,
-                    'end_action' => null,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
+                    DB::table('project_details')->insert([
+                        'project_id' => $project->id,
+                        'kerjaan_list_proses_id' => $proses->list_proses_id,
+                        'urutan_id' => $proses->urutan,
+                        'status' => 'pending',
+                        'start_plan' => $currentStartPlan,
+                        'end_plan' => $currentStartPlan->copy()->addDays($proses->hari - 1),
+                        'start_action' => null,
+                        'end_action' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
 
-                $startPlan = $currentStartPlan->copy()->addDays($proses->hari);
+                    $startPlan = $currentStartPlan->copy()->addDays($proses->hari);
+                }
             }
-        }
 
-        $this->logActivity(
-            "Memperbaharui Project {$project->no_project} - {$project->nama_project}",
-            $project->no_project,
-            $oldData,
-            $project->toArray()
-        );
-
+            $this->logActivity(
+                "Memperbaharui Project {$project->no_project} - {$project->nama_project}",
+                $project->no_project,
+                $oldData,
+                $project->toArray()
+            );
+        });
 
         if ($request->ajax()) {
             return response()->json(['success' => true]);
@@ -483,9 +514,9 @@ class TblProjectController extends Controller
             ->with('success', 'Project berhasil diperbarui');
     }
 
-
     public function destroy(ProjectTbl $project, Request $request)
     {
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         DB::beginTransaction();
         try {
 
@@ -503,44 +534,55 @@ class TblProjectController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Project berhasil dihapus.'
+                'message' => 'Project berhasil dihapus.',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus project.',
-                'error'   => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
+    private function authorizeClientAccess(ProjectTbl $project): void
+    {
+        if ((int) Auth::user()->role_id !== 2) {
+            return;
+        }
+
+        abort_unless(
+            $project->clients()->whereKey(Auth::id())->exists(),
+            403
+        );
+    }
+
     public function uploadFiles(Request $request)
     {
-
-
-        // dd($request->all());
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         $request->validate([
-            'project_id'     => 'required|exists:projects,id',
+            'project_id' => 'required|exists:projects,id',
             'list_proses_id' => 'required|exists:list_proses,id',
-            'fileLabel'      => 'nullable|array',
-            'fileLabel.*'    => [
+            'fileLabel' => 'nullable|array',
+            'fileLabel.*' => [
                 Rule::requiredIf(function () use ($request) {
-                    return !empty($request->fileLabel);
+                    return ! empty($request->fileLabel);
                 }),
-                'string'
+                'string',
             ],
-            'fileInput'      => 'nullable|array',
-            'fileInput.*'    => [
+            'fileInput' => 'nullable|array',
+            'fileInput.*' => [
                 Rule::requiredIf(function () use ($request) {
-                    return !empty($request->fileLabel);
+                    return ! empty($request->fileLabel);
                 }),
                 'file',
                 'mimes:pdf,jpg,png,doc,docx,xls,xlsx',
-                'max:102400'
+                'max:102400',
             ],
-            'start_action'   => 'required|date',
-            'end_action'     => 'required|date|after_or_equal:start_action',
+            'start_action' => 'required|date',
+            'end_action' => 'required|date|after_or_equal:start_action',
         ]);
 
         $listProsesId = $request->input('list_proses_id');
@@ -556,7 +598,7 @@ class TblProjectController extends Controller
                 ->where('urutan_id', $urutanId)
                 ->first();
 
-            if (!$projectDetail) {
+            if (! $projectDetail) {
                 $projectDetailId = DB::table('project_details')->insertGetId([
                     'project_id' => $request->project_id,
                     'kerjaan_list_proses_id' => $listProsesId,
@@ -589,7 +631,7 @@ class TblProjectController extends Controller
                         ->where('nama_file', $namaFile)
                         ->first();
 
-                    if (!$listProsesFile) {
+                    if (! $listProsesFile) {
                         $listProsesFileId = DB::table('list_proses_files')->insertGetId([
                             'list_proses_id' => $listProsesId,
                             'nama_file' => $namaFile,
@@ -601,10 +643,10 @@ class TblProjectController extends Controller
                     }
 
                     // 2b. Simpan file ke storage
-                    $directory = 'uploads/projects/' . $request->project_id;
-                    $fileName = time() . '_' . $file->getClientOriginalName();
+                    $directory = 'uploads/projects/'.$request->project_id;
+                    $fileName = time().'_'.$file->getClientOriginalName();
                     $file->move(public_path($directory), $fileName);
-                    $publicPath = $directory . '/' . $fileName;
+                    $publicPath = $directory.'/'.$fileName;
 
                     // 2c. Simpan data ke project_progress_files
                     DB::table('project_progress_files')->insert([
@@ -619,22 +661,23 @@ class TblProjectController extends Controller
                 }
             }
 
-
             DB::commit();
 
             return response()->json(['success' => true, 'message' => 'File berhasil diunggah.']);
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat menyimpan.',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     public function getUploadedFiles($projectId, Request $request)
     {
+        $this->authorizeClientAccess(ProjectTbl::findOrFail($projectId));
         $listProsesId = $request->input('list_proses_id');
         $urutanId = $request->input('urutan_id'); // Ambil dari request
 
@@ -661,7 +704,7 @@ class TblProjectController extends Controller
             'project_progress_files.created_at',
             'project_progress_files.uploaded_by',
             'project_details.start_action',
-            'project_details.end_action'
+            'project_details.end_action',
         ])
             ->get()
             ->map(function ($file) {
@@ -673,20 +716,20 @@ class TblProjectController extends Controller
                     'uploaded_at' => $file->created_at,
                     'uploaded_by' => $file->uploaded_by,
                     'start_action' => $file->start_action,
-                    'end_action' => $file->end_action
+                    'end_action' => $file->end_action,
                 ];
             });
 
         return response()->json($files);
     }
 
-
     public function deleteFile($id)
     {
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         // Ambil data file
         $file = DB::table('project_progress_files')->where('id', $id)->first();
 
-        if (!$file) {
+        if (! $file) {
             return response()->json(['message' => 'File tidak ditemukan.'], 404);
         }
 
@@ -701,14 +744,13 @@ class TblProjectController extends Controller
         return response()->json(['message' => 'File berhasil dihapus.']);
     }
 
-
-
     public function markStepDone($id, Request $request)
     {
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         $project_id = $id;
         $validated = $request->validate([
             'list_proses_id' => 'required',
-            'urutan_id' => 'required'
+            'urutan_id' => 'required',
         ]);
 
         try {
@@ -719,30 +761,30 @@ class TblProjectController extends Controller
                 ->where('urutan_id', $validated['urutan_id'])
                 ->update([
                     'status' => 'done',
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Status berhasil diubah menjadi selesai'
+                'message' => 'Status berhasil diubah menjadi selesai',
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal mengupdate status: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate status: '.$e->getMessage(),
             ], 500);
         }
     }
 
-
     public function unmarkStepDone($id, Request $request)
     {
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         $project_id = $id;
 
         // Validasi input kerjaan_list_proses_id
         $validated = $request->validate([
             'kerjaan_list_proses_id' => 'required|integer',
-            'urutan_id' => 'required'
+            'urutan_id' => 'required',
         ]);
 
         try {
@@ -753,21 +795,20 @@ class TblProjectController extends Controller
                 ->where('urutan_id', $validated['urutan_id'])
                 ->update([
                     'status' => 'in_progress',
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Status berhasil dibatalkan dari selesai'
+                'message' => 'Status berhasil dibatalkan dari selesai',
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membatalkan status: ' . $e->getMessage()
+                'message' => 'Gagal membatalkan status: '.$e->getMessage(),
             ], 500);
         }
     }
-
 
     public function getListKomentar(Request $request)
     {
@@ -777,6 +818,8 @@ class TblProjectController extends Controller
             'urutan_id' => 'required|integer',
         ]);
 
+        $this->authorizeClientAccess(ProjectTbl::findOrFail($request->project_id));
+
         // 1. Cari project_detail_id
         $projectDetail = DB::table('project_details')
             ->where('project_id', $request->project_id)
@@ -784,9 +827,7 @@ class TblProjectController extends Controller
             ->where('urutan_id', $request->urutan_id)
             ->first();
 
-        // dd($projectDetail);
-
-        if (!$projectDetail) {
+        if (! $projectDetail) {
             return response()->json([]); // Tidak ada komentar karena belum ada project_detail
         }
 
@@ -805,11 +846,8 @@ class TblProjectController extends Controller
             ->orderBy('c.id', 'desc')
             ->get();
 
-        //   dd($komentar);
-
         return response()->json($komentar);
     }
-
 
     public function storeKomentar(Request $request)
     {
@@ -819,6 +857,8 @@ class TblProjectController extends Controller
             'urutan_id' => 'required|integer',
             'comment' => 'required|string|max:1000',
         ]);
+
+        $this->authorizeClientAccess(ProjectTbl::findOrFail($request->project_id));
 
         $projectId = $request->project_id;
         $listProsesId = $request->list_proses_id;
@@ -835,7 +875,7 @@ class TblProjectController extends Controller
                 ->first();
 
             // 2. Kalau belum ada, insert dulu
-            if (!$projectDetail) {
+            if (! $projectDetail) {
                 $projectDetailId = DB::table('project_details')->insertGetId([
                     'project_id' => $projectId,
                     'kerjaan_list_proses_id' => $listProsesId,
@@ -856,14 +896,16 @@ class TblProjectController extends Controller
                 'updated_at' => now(),
             ]);
 
-            if (!$inserted) {
+            if (! $inserted) {
                 throw new \Exception('Gagal menambahkan komentar.');
             }
 
             DB::commit();
+
             return response()->json(['message' => 'Komentar berhasil ditambahkan']);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Gagal menambahkan komentar',
                 'error' => $e->getMessage(),
@@ -873,6 +915,12 @@ class TblProjectController extends Controller
 
     public function deleteKomentar($id)
     {
+        $comment = DB::table('project_detail_comments')->where('id', $id)->first();
+        abort_unless($comment, 404);
+        $projectId = DB::table('project_details')->where('id', $comment->project_detail_id)->value('project_id');
+        $this->authorizeClientAccess(ProjectTbl::findOrFail($projectId));
+        abort_unless((int) Auth::user()->role_id === 1 || (int) $comment->user_id === (int) Auth::id(), 403);
+
         try {
             DB::table('project_detail_comments')->where('id', $id)->delete();
 
@@ -882,9 +930,9 @@ class TblProjectController extends Controller
         }
     }
 
-
     public function uploadFileAdministrasi(Request $request)
     {
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         $id = $request->input('id');
         $files = $request->file('files');
         $fileNames = $request->input('file_names');
@@ -908,24 +956,29 @@ class TblProjectController extends Controller
 
         return response()->json(['success' => true, 'message' => 'File berhasil diupload']);
     }
+
     public function getDataAdministrasi($id)
     {
+        $this->authorizeClientAccess(ProjectTbl::findOrFail($id));
+
         $files = DB::table('administrasi_files')
             ->where('project_id', $id)
+            ->when((int) Auth::user()->role_id !== 1, fn ($query) => $query->where('is_internal', false))
             ->orderBy('uploaded_at', 'desc')
             ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $files
+            'data' => $files,
         ]);
     }
 
     public function deleteAdministrasiFile($id)
     {
+        abort_unless((int) Auth::user()->role_id === 1, 403);
         $file = DB::table('administrasi_files')->where('id', $id)->first();
 
-        if (!$file) {
+        if (! $file) {
             return response()->json(['success' => false, 'message' => 'File tidak ditemukan.'], 404);
         }
 

@@ -16,19 +16,19 @@ use App\Http\Controllers\KerjaanController;
 use App\Http\Controllers\KwitansiController;
 use App\Http\Controllers\Laporan\BukuBesarController;
 use App\Http\Controllers\Laporan\LabaRugiController;
+use App\Http\Controllers\Laporan\NeracaController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MpiTestController;
 use App\Http\Controllers\PakController;
 use App\Http\Controllers\ProcedureController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QuotationController;
+use App\Http\Controllers\SpkController;
 use App\Http\Controllers\TblProjectController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VendorController;
-use App\Models\KaryawanData;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Laporan\NeracaController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -43,7 +43,6 @@ Route::controller(LoginController::class)->group(function () {
 Route::get('/quotation/approval/{encryptedData}', [QuotationController::class, 'showApproval'])->name('quotation.approval');
 Route::get('/invoice/approval/{token}', [InvoiceController::class, 'showApproval'])->name('invoice.approval');
 Route::get('/assets/scan/{kode_barcode}', [AssetController::class, 'scan'])->name('assets.scan');
-
 
 // Authenticated Routes
 Route::middleware('auth')->group(function () {
@@ -119,7 +118,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/new-daily/project-data', [DailyController::class, 'projectData'])
         ->name('newdaily.projectData');
 
-
     Route::get('/daily/{daily}/comments', [DailyController::class, 'dataDailyComments']);
     Route::post('/daily/{daily}/comments', [DailyController::class, 'storeDailyComments']);
     Route::delete('/daily/comments/{comment}', [DailyController::class, 'destroyDailyComments']);
@@ -145,7 +143,6 @@ Route::middleware('auth')->group(function () {
     Route::delete('/accounting/{accounting}/delete', [AccountingController::class, 'destroy'])->name('accounting.delete');
     Route::delete('/accounting/file/{file}', [AccountingController::class, 'deleteFile'])->name('accounting.file.delete');
     Route::post('/accounting/import', [AccountingController::class, 'import'])->name('accounting.import');
-
 
     // Data karyawan
     Route::prefix('karyawan')->group(function () {
@@ -197,8 +194,6 @@ Route::middleware('auth')->group(function () {
     Route::post('/invoice/{invoice}/approve', [InvoiceController::class, 'approve'])->name('invoice.approve');
     Route::post('/invoice/{invoice}/reject', [InvoiceController::class, 'reject'])->name('invoice.reject');
 
-
-
     // Kwitansi
     Route::get('/kwitansi', [KwitansiController::class, 'index'])->name('kwitansi.index');
     Route::get('/kwitansi/create', [KwitansiController::class, 'create'])->name('kwitansi.create');
@@ -207,12 +202,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/kwitansi/{id}/edit', [KwitansiController::class, 'edit'])->name('kwitansi.edit');
     Route::post('/kwitansi/{id}/update', [KwitansiController::class, 'update'])->name('kwitansi.update');
 
-    //Log
+    // Log
     Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity-logs.index');
     Route::get('/activity-logs/data', [ActivityLogController::class, 'data'])->name('activity-logs.data');
     Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])->name('activity-logs.show');
 
-    //Vendor
+    // Vendor
     Route::get('/vendor', [VendorController::class, 'index'])->name('vendor.index');
     Route::get('/vendor/data', [VendorController::class, 'getData'])->name('vendor.getData');
     Route::get('/vendor/{id}', [VendorController::class, 'show'])->name('vendor.show');
@@ -220,7 +215,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/vendor/{id}', [VendorController::class, 'update'])->name('vendor.update');
     Route::delete('/vendor/{id}', [VendorController::class, 'destroy'])->name('vendor.destroy');
 
-    //Mpi Test
+    // Mpi Test
     Route::get('/mpi-tests', [MpiTestController::class, 'index'])->name('mpi.index');
     Route::get('/mpi-tests', [MpiTestController::class, 'index'])->name('mpi.index');
     Route::get('/mpi-tests/data', [MpiTestController::class, 'testsData'])->name('mpi.tests.data');
@@ -233,7 +228,19 @@ Route::middleware('auth')->group(function () {
     Route::put('/mpi-items/{id}', [MpiTestController::class, 'updateItem'])->name('mpi.items.update');
     Route::delete('/mpi-items/{id}', [MpiTestController::class, 'destroyItem'])->name('mpi.items.destroy');
 
-    //PAK
+    Route::prefix('spk')->name('spk.')->group(function () {
+        Route::get('/', [SpkController::class, 'index'])->name('index');
+        Route::get('/datatable', [SpkController::class, 'datatable'])->name('datatable');
+        Route::get('/create', [SpkController::class, 'create'])->name('create');
+        Route::post('/', [SpkController::class, 'store'])->name('store');
+        Route::get('/{spk}', [SpkController::class, 'show'])->name('show');
+        Route::get('/{spk}/edit', [SpkController::class, 'edit'])->name('edit');
+        Route::put('/{spk}', [SpkController::class, 'update'])->name('update');
+        Route::delete('/{spk}', [SpkController::class, 'destroy'])->name('destroy');
+        Route::get('/{spk}/export-pdf', [SpkController::class, 'exportPdf'])->name('exportPdf');
+    });
+
+    // PAK
     // Routes untuk PAK
     Route::prefix('pak')->name('pak.')->group(function () {
         Route::get('/', [PakController::class, 'index'])->name('index');
@@ -282,10 +289,6 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{id}', [AssetController::class, 'destroy'])->name('destroy');
     });
 
-
-
-
-
     Route::prefix('coa')->group(function () {
         Route::get('/', [CoaController::class, 'index'])->name('coa.index');
         Route::get('/list', [CoaController::class, 'getlistcoa'])->name('coa.list');
@@ -301,7 +304,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [AccountingSettingController::class, 'index'])->name('accounting-settings.index');
         Route::post('/save', [AccountingSettingController::class, 'save'])->name('accounting-settings.save');
     });
-
 
     Route::prefix('journals')->group(function () {
 
@@ -329,8 +331,6 @@ Route::middleware('auth')->group(function () {
         Route::get('show/{id}', [JournalController::class, 'show'])
             ->name('journals.show');
     });
-
-
 
     Route::prefix('fpus')->name('fpus.')->group(function () {
 
@@ -384,9 +384,8 @@ Route::middleware('auth')->group(function () {
 
     });
 
-
     Route::prefix('laporan')->group(function () {
-        
+
         Route::get('/buku-besar', [BukuBesarController::class, 'index'])
             ->name('laporan.buku-besar.index');
 
@@ -408,7 +407,6 @@ Route::middleware('auth')->group(function () {
 
     // export using maatwebsite
     Route::get('/mpi-tests/{id}/export', [MpiTestController::class, 'exportExcel'])->name('mpi.tests.export');
-
 
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 });

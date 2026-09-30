@@ -473,7 +473,7 @@
                 </div>
                 <div class="card">
                     <div class="card-body">
-                        <h5>Informasi Project ({{ $project->client->company ?? '-' }})</h5>
+                        <h5>Informasi Project ({{ $project->clients->pluck('company')->filter()->implode(', ') ?: '-' }})</h5>
                         <div class="row my-3">
                             <div class="col-md-6">
                                 <table class="table">

@@ -161,7 +161,7 @@
                     @endif
 
                     @if (in_array(Auth::user()->role_id, [1, 3, 4]))
-                        <div class="nav-item has-sub {{ request()->routeIs('quotations.index') ? 'active open' : '' }}">
+                        <div class="nav-item has-sub {{ request()->routeIs('quotations.index') || request()->routeIs('pak.*') || request()->routeIs('spk.*') ? 'active open' : '' }}">
                             <a href="javascript:void(0)">
                                 <i class="fas fa-retweet"></i><span>Simulasi</span>
                             </a>
@@ -169,7 +169,9 @@
                                 <a href="{{ route('quotations.index') }}"
                                     class="menu-item {{ request()->routeIs('quotations.index') ? 'active' : '' }}">Quotation</a>
                                 <a href="{{ route('pak.index') }}"
-                                    class="menu-item {{ request()->routeIs('pak.index') ? 'active' : '' }} }}">PAK</a>
+                                    class="menu-item {{ request()->routeIs('pak.*') ? 'active' : '' }}">PAK</a>
+                                <a href="{{ route('spk.index') }}"
+                                    class="menu-item {{ request()->routeIs('spk.*') ? 'active' : '' }}">SPK</a>
 
                             </div>
 
@@ -181,6 +183,13 @@
                             <i class="ik ik-folder"></i><span>Project</span>
                         </a>
                     </div>
+
+
+                    {{-- <div class="nav-item {{ request()->routeIs('spk.*') ? 'active' : '' }}">
+                        <a href="{{ route('spk.index') }}">
+                            <i class="ik ik-file"></i><span>SPK</span>
+                        </a>
+                    </div> --}}
 
                     @if (in_array(Auth::user()->role_id, [1, 3, 4]))
                         {{-- Invoice --}}

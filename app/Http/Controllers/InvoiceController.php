@@ -69,6 +69,8 @@ class InvoiceController extends Controller
             })
 
             ->addColumn('aksi', function ($inv) use ($user) {
+                $roleName = strtolower($user->role->name ?? '');
+
                 $html = '
                 <div class="dropdown-action">
                     <button class="dropbtn">Aksi ⮟</button>
@@ -90,7 +92,7 @@ class InvoiceController extends Controller
                         </a>
             ';
 
-                if ($user && $user->role_id == 4 && $inv->approval_status === 'pending') {
+                if (in_array($roleName, ['superadmin', 'keuangan'], true) && $inv->approval_status === 'pending') {
                     $html .= '
                     <a href="javascript:void(0)" class="btn-approve" data-id="' . $inv->id . '">
                         <i class="fas fa-check"></i> Approve
@@ -470,7 +472,7 @@ class InvoiceController extends Controller
             'invoice_id'        => $invoice->id,
             'approver_id'       => $user->id,
             'approver_name'     => $user->name,
-            'approver_position' => $user->role->name ?? 'Finance',
+            'approver_position' => 'Keuangan',
             'invoice_no'        => $invoice->invoice_no,
             'approval_date'     => now()->format('d-m-Y H:i'),
             'signature_token'   => $signatureToken,
@@ -554,6 +556,8 @@ class InvoiceController extends Controller
             if (($approvalData['signature_token'] ?? null) !== $invoice->signature_token) {
                 abort(403, 'Invalid approval token (mismatch dengan payload)');
             }
+
+            $approvalData['approver_position'] = 'Keuangan';
 
             // STEP 6: jika semua ok → tampilkan view
             return view('invoice.approval', [

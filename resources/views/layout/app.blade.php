@@ -86,6 +86,50 @@
 
     @yield('script')
 
+    <script>
+        $(function() {
+            const flashSuccess = @json(session('success'));
+            const flashError = @json(session('error'));
+            const flashWarning = @json(session('warning'));
+            const validationErrors = @json($errors->all());
+
+            if (flashSuccess) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil',
+                    text: flashSuccess,
+                });
+            }
+
+            if (flashError) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Terjadi Kesalahan',
+                    text: flashError,
+                });
+            }
+
+            if (flashWarning) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Perhatian',
+                    text: flashWarning,
+                });
+            }
+
+            if (validationErrors && validationErrors.length) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Validasi Gagal',
+                    html: '<ul style="text-align:left; margin:0; padding-left:18px;">' +
+                        validationErrors.map(error => '<li>' + error + '</li>').join('') +
+                        '</ul>',
+                });
+            }
+        });
+    </script>
+
+
     <!-- Google Analytics -->
     <script>
         (function(b, o, i, l, e, r) {
