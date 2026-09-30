@@ -4,8 +4,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
@@ -59,6 +59,12 @@ class User extends Authenticatable
     public function projects()
     {
         return $this->hasMany(ProjectTbl::class, 'client_id');
+    }
+
+    public function clientProjects()
+    {
+        return $this->belongsToMany(ProjectTbl::class, 'client_project', 'client_id', 'project_id')
+            ->withTimestamps();
     }
 
     public function isFinance(): bool

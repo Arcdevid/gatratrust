@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -39,6 +40,19 @@ class ProjectTbl extends Model
     public function client()
     {
         return $this->belongsTo(User::class, 'client_id');
+    }
+
+    public function clients()
+    {
+        return $this->belongsToMany(User::class, 'client_project', 'project_id', 'client_id')
+            ->withTimestamps();
+    }
+
+    public function scopeAccessibleToClient(Builder $query, int $clientId): Builder
+    {
+        return $query->whereHas('clients', function (Builder $clientQuery) use ($clientId) {
+            $clientQuery->whereKey($clientId);
+        });
     }
 
     public function administrasiFiles()

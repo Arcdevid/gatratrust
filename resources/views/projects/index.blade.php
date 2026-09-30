@@ -100,8 +100,7 @@
                         </div>
                         <div class="form-group">
                             <label>Client</label>
-                            <select name="client_id" class="form-control" required>
-                                <option value="" selected disabled>Pilih Client</option>
+                            <select name="client_ids[]" class="form-control select2" multiple="multiple" required>
                                 @foreach ($listclient as $client)
                                     <option value="{{ $client->id }}">
                                         {{ $client->name }}{{ $client->company ? ' - ' . $client->company : '' }}
@@ -193,8 +192,8 @@
                         </div>
                         <div class="form-group">
                             <label>Client</label>
-                            <select name="client_id" class="form-control" id="edit_client_id" required>
-                                <option value="">Pilih Client</option>
+                            <select name="client_ids[]" class="form-control select2" id="edit_client_ids"
+                                multiple="multiple" required>
                                 @foreach ($listclient as $client)
                                     <option value="{{ $client->id }}">
                                         {{ $client->name }}- {{ $client->company ?? '' }}
@@ -482,6 +481,7 @@
 
         $('#exampleModalCenter').on('hidden.bs.modal', function() {
             $(this).find('form')[0].reset();
+            $(this).find('.select2').val(null).trigger('change');
         });
 
         function formatRupiah(angka) {
@@ -535,7 +535,7 @@
             var projectId = $(this).data('id');
             var no = $(this).data('no');
             var nama = $(this).data('nama');
-            var client = $(this).data('client');
+            const clientsRaw = $(this).attr('data-clients') || '';
             var kerjaan = $(this).data('kerjaan');
             var deskripsi = $(this).data('deskripsi');
             var start = $(this).data('start');
@@ -547,7 +547,8 @@
             // Isi form dalam modal dengan data
             $('#edit_no_project').val(no);
             $('#edit_nama_project').val(nama);
-            $('#edit_client_id').val(client);
+            const selectedClients = clientsRaw === '' ? [] : clientsRaw.split(';').map(Number);
+            $('#edit_client_ids').val(selectedClients).trigger('change');
             $('#edit_kerjaan_id').val(kerjaan);
             $('#edit_deskripsi').val(deskripsi);
             $('#edit_start').val(start);
