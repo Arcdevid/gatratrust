@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Quotation;
 use App\Models\User;
-use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
+use DOMElement;
+use Dompdf\Frame;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use App\Models\Quotation;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Yajra\DataTables\Facades\DataTables;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class QuotationController extends Controller
 {
@@ -36,21 +37,21 @@ class QuotationController extends Controller
                         : '';
                 })
                 ->addColumn('status_name', function ($row) {
-                    if (!$row->status) {
+                    if (! $row->status) {
                         return '<span class="badge bg-secondary">-</span>';
                     }
 
                     return match (strtolower($row->status->name)) {
-                        'pending'  => '<span class="badge bg-yellow text-white">Pending</span>',
-                        'approve'  => '<span class="badge bg-success text-white">Approve</span>',
+                        'pending' => '<span class="badge bg-yellow text-white">Pending</span>',
+                        'approve' => '<span class="badge bg-success text-white">Approve</span>',
                         'rejected' => '<span class="badge bg-danger text-white">Rejected</span>',
-                        default    => '<span class="badge bg-secondary text-white">' . $row->status->name . '</span>',
+                        default => '<span class="badge bg-secondary text-white">'.$row->status->name.'</span>',
                     };
                 })
                 ->addColumn('action', function ($row) {
                     $btns = '
                         <button class="btn btn-sm btn-info showBtn"
-                                data-id="' . $row->id . '" title="Show">
+                                data-id="'.$row->id.'" title="Show">
                             <i class="fas fa-eye"></i>
                         </button>
                     ';
@@ -60,19 +61,19 @@ class QuotationController extends Controller
 
                     if ((int) $row->status_id === 2) {
                         // Approved → hanya PDF
-                        $btns .= ' <a href="' . route('quotations.exportPdf', $row->id) . '"
+                        $btns .= ' <a href="'.route('quotations.exportPdf', $row->id).'"
                                     class="btn btn-sm btn-secondary" target="_blank" title="Export PDF">
                                     <i class="fas fa-file-pdf"></i>
                                 </a>';
                     } elseif ((int) $row->status_id === 3) {
                         // Rejected → hanya Delete
                         $btns .= ' <button class="btn btn-sm btn-danger deleteBtn"
-                                            data-id="' . $row->id . '" title="Delete">
+                                            data-id="'.$row->id.'" title="Delete">
                                         <i class="fas fa-trash"></i>
                                 </button>';
                     } else {
                         // Pending → tampilkan PDF juga
-                        $btns .= ' <a href="' . route('quotations.exportPdf', $row->id) . '"
+                        $btns .= ' <a href="'.route('quotations.exportPdf', $row->id).'"
                                     class="btn btn-sm btn-secondary" target="_blank" title="Export PDF">
                                     <i class="fas fa-file-pdf"></i>
                                 </a>';
@@ -80,11 +81,11 @@ class QuotationController extends Controller
                         if (in_array($roleName, ['superadmin', 'keuangan'])) {
                             $btns .= '
                                 <button class="btn btn-sm btn-success approveBtn"
-                                        data-id="' . $row->id . '" title="Approve">
+                                        data-id="'.$row->id.'" title="Approve">
                                     <i class="fas fa-check-circle"></i>
                                 </button>
                                 <button class="btn btn-sm btn-warning rejectBtn"
-                                        data-id="' . $row->id . '" title="Reject">
+                                        data-id="'.$row->id.'" title="Reject">
                                     <i class="fas fa-times-circle"></i>
                                 </button>
                             ';
@@ -93,7 +94,7 @@ class QuotationController extends Controller
                         // semua role tetap bisa Delete kalau pending
                         $btns .= '
                             <button class="btn btn-sm btn-danger deleteBtn"
-                                    data-id="' . $row->id . '" title="Delete">
+                                    data-id="'.$row->id.'" title="Delete">
                                 <i class="fas fa-trash"></i>
                             </button>
                         ';
@@ -132,8 +133,6 @@ class QuotationController extends Controller
         return view('quotations.create', compact('quotations', 'newQuotationNo'));
     }
 
-
-
     public function copy($id)
     {
         $quotation = Quotation::with(['items', 'scopes'])->findOrFail($id);
@@ -154,10 +153,6 @@ class QuotationController extends Controller
     public function store(Request $request)
     {
         DB::beginTransaction();
-
-
-        // dd($request->all());
-
 
         try {
             // Validasi data
@@ -225,17 +220,17 @@ class QuotationController extends Controller
                 ]);
             }
 
-            if (!empty($validated['scopes'])) {
+            if (! empty($validated['scopes'])) {
                 foreach ($validated['scopes'] as $scope) {
                     $quotation->scopes()->create([
                         'description' => $scope['description'],
-                        'responsible_pt_gpt' => !empty($scope['responsible_pt_gpt']) ? 1 : 0,
-                        'responsible_client' => !empty($scope['responsible_client']) ? 1 : 0,
+                        'responsible_pt_gpt' => ! empty($scope['responsible_pt_gpt']) ? 1 : 0,
+                        'responsible_client' => ! empty($scope['responsible_client']) ? 1 : 0,
                     ]);
                 }
             }
 
-            if (!empty($validated['terms_conditions'])) {
+            if (! empty($validated['terms_conditions'])) {
                 foreach ($validated['terms_conditions'] as $term) {
                     $quotation->terms()->create([
                         'description' => $term['description'],
@@ -247,13 +242,13 @@ class QuotationController extends Controller
 
             return response()->json([
                 'success' => true,
-                'status'  => 201,
-                'message' => 'Quotation berhasil dibuat'
+                'status' => 201,
+                'message' => 'Quotation berhasil dibuat',
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'status'  => 500,
+                'status' => 500,
                 'message' => $e->getMessage(), // tampilkan error asli
             ], 500);
         }
@@ -263,6 +258,7 @@ class QuotationController extends Controller
     public function edit($id)
     {
         $quotation = Quotation::with(['items', 'scopes'])->findOrFail($id);
+
         return view('quotations.edit', compact('quotation'));
     }
 
@@ -271,6 +267,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::findOrFail($id);
         $quotation->delete();
+
         return response()->json(['success' => true]);
     }
 
@@ -285,19 +282,45 @@ class QuotationController extends Controller
             try {
                 if (Storage::disk('public')->exists($quotation->approved_qr)) {
                     $qrCodeData = Storage::disk('public')->get($quotation->approved_qr);
-                    $qrCodeBase64 = 'data:image/svg+xml;base64,' . base64_encode($qrCodeData);
+                    $qrCodeBase64 = 'data:image/svg+xml;base64,'.base64_encode($qrCodeData);
                 }
             } catch (\Exception $e) {
-                \Log::error('QR Code Error: ' . $e->getMessage());
+                \Log::error('QR Code Error: '.$e->getMessage());
             }
         }
 
-        $pdf = Pdf::loadView('quotations.pdf', [
+        $pdfData = [
             'quotation' => $quotation,
-            'qrCodeBase64' => $qrCodeBase64
-        ])->setPaper('A4', 'portrait');
+            'qrCodeBase64' => $qrCodeBase64,
+        ];
+        $pdfData['headerHeight'] = $this->quotationHeaderHeight($pdfData);
+
+        $pdf = Pdf::loadView('quotations.pdf', $pdfData)->setPaper('A4', 'portrait');
 
         return $pdf->stream('quotation.pdf');
+    }
+
+    private function quotationHeaderHeight(array $pdfData): float
+    {
+        $height = 0.0;
+        $pdf = Pdf::loadView('quotations.pdf', $pdfData + ['measureHeader' => true])
+            ->setPaper('A4', 'portrait');
+        $pdf->setCallbacks([
+            [
+                'event' => 'end_frame',
+                'f' => function (Frame $frame) use (&$height): void {
+                    $node = $frame->get_node();
+
+                    if ($node instanceof DOMElement && $node->getAttribute('class') === 'header-page') {
+                        $height = $frame->get_margin_height();
+                    }
+                },
+            ],
+        ]);
+        $pdf->render();
+
+        // Dompdf reports points; leave a small gap below the measured header.
+        return ceil($height) + 6;
     }
 
     public function show($id)
@@ -306,10 +329,9 @@ class QuotationController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $quotation
+            'data' => $quotation,
         ]);
     }
-
 
     public function approve($id)
     {
@@ -325,13 +347,13 @@ class QuotationController extends Controller
 
         // Data approval
         $approvalData = [
-            'quotation_id'      => $quotation->id,
-            'approver_id'       => $user->id,
-            'approver_name'     => $user->name,
+            'quotation_id' => $quotation->id,
+            'approver_id' => $user->id,
+            'approver_name' => $user->name,
             'approver_position' => $user->role->name ?? 'Keuangan',
-            'quotation_no'      => $quotation->quo_no,
-            'approval_date'     => now()->format('d-m-Y H:i'),
-            'signature_token'   => Str::random(32),
+            'quotation_no' => $quotation->quo_no,
+            'approval_date' => now()->format('d-m-Y H:i'),
+            'signature_token' => Str::random(32),
         ];
 
         // Enkripsi data
@@ -344,17 +366,17 @@ class QuotationController extends Controller
         $qrSvg = QrCode::format('svg')->size(200)->generate($qrUrl);
 
         // Simpan di storage
-        $fileName = 'qrcodes/quotation_' . $quotation->id . '_approved.svg';
+        $fileName = 'qrcodes/quotation_'.$quotation->id.'_approved.svg';
         Storage::disk('public')->put($fileName, $qrSvg);
 
         // Ubah ke base64 supaya tetap kompatibel dengan PDF
-        $qrImage = 'data:image/svg+xml;base64,' . base64_encode($qrSvg);
+        $qrImage = 'data:image/svg+xml;base64,'.base64_encode($qrSvg);
 
         // Update quotation
-        $quotation->status_id       = 2; // approved
-        $quotation->approved_by     = $user->id;
-        $quotation->approved_qr     = $fileName;
-        $quotation->approved_at     = now();
+        $quotation->status_id = 2; // approved
+        $quotation->approved_by = $user->id;
+        $quotation->approved_qr = $fileName;
+        $quotation->approved_at = now();
         $quotation->signature_token = $approvalData['signature_token']; // SIMPAN TOKEN
         $quotation->save();
 
@@ -370,12 +392,11 @@ class QuotationController extends Controller
         $quotation = Quotation::findOrFail($id);
         $quotation->update([
             'rejected_reason' => $request->reason,
-            'status_id' => 3
+            'status_id' => 3,
         ]);
 
         return response()->json(['message' => 'Quotation rejected with reason saved']);
     }
-
 
     public function showApproval($encryptedData)
     {
@@ -390,7 +411,7 @@ class QuotationController extends Controller
             }
 
             return view('quotations.approval', [
-                'approval'  => $approvalData,
+                'approval' => $approvalData,
                 'quotation' => $quotation,
             ]);
         } catch (\Exception $e) {

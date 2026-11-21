@@ -14,7 +14,7 @@
 
         /* Atur margin halaman sesuai tinggi header & footer */
         @page {
-            margin-top: 110px;
+            margin-top: {{ $headerHeight ?? 0 }}pt;
             /* tinggi header */
             margin-bottom: 80px;
             /* tinggi footer */
@@ -25,7 +25,7 @@
         /* Header tetap di semua halaman */
         .header-page {
             position: fixed;
-            top: -110px;
+            top: -{{ $headerHeight ?? 0 }}pt;
             left: 0;
             right: 0;
             background: white;
@@ -224,16 +224,6 @@
 
             <hr style="border: 1px solid #0C6401; margin: 4px 0 6px 0;">
         </div>
-    </div>
-
-    <!-- Footer -->
-    <div class="footer">
-        <img src="{{ $base64 }}" alt="Logo">
-        PT. GATRA PERDANA TRUSTRUE | www.gatraperdanatrustrue.com | Page <span class="pagenum"></span>
-    </div>
-
-    <!-- Konten -->
-    <div class="content">
         <div class="quotation-info">
             <h2 class="text-center" style="margin: 2px 0;">QUOTATION</h2>
 
@@ -286,7 +276,17 @@
                 </tr>
             </table>
         </div>
+    </div>
 
+    @unless ($measureHeader ?? false)
+    <!-- Footer -->
+    <div class="footer">
+        <img src="{{ $base64 }}" alt="Logo">
+        PT. GATRA PERDANA TRUSTRUE | www.gatraperdanatrustrue.com | Page <span class="pagenum"></span>
+    </div>
+
+    <!-- Konten -->
+    <div class="content">
         <table class="info-table2" style="margin-bottom:20px;">
             <thead>
                 <tr>
@@ -348,7 +348,7 @@
         </table>
 
         @php
-            $termsList = $quotation->terms()->get();
+            $termsList = $quotation->getRelation('terms');
         @endphp
         <p><b>Terms and Conditions:</b></p>
         @if ($termsList && $termsList->count() > 0)
@@ -389,6 +389,7 @@
             </table>
         </div>
     </div>
+    @endunless
 
 </body>
 
