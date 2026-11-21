@@ -14,7 +14,7 @@
 
         /* Atur margin halaman sesuai tinggi header & footer */
         @page {
-            margin-top: 350px;
+            margin-top: 110px;
             /* tinggi header */
             margin-bottom: 80px;
             /* tinggi footer */
@@ -25,19 +25,21 @@
         /* Header tetap di semua halaman */
         .header-page {
             position: fixed;
-            top: -300px;
+            top: -110px;
             left: 0;
             right: 0;
-            height: 100px;
-            /* harus sama dengan @page margin-top */
             background: white;
             z-index: 100;
         }
 
         .header {
             width: 100%;
+        }
+
+        .quotation-info {
             border-bottom: 2px solid #080808;
             padding-bottom: 5px;
+            page-break-inside: avoid;
         }
 
         .header-table {
@@ -220,9 +222,19 @@
                 </tr>
             </table>
 
-            <!-- ===== Tambahkan bagian QUOTATION di bawah garis header ===== -->
             <hr style="border: 1px solid #0C6401; margin: 4px 0 6px 0;">
+        </div>
+    </div>
 
+    <!-- Footer -->
+    <div class="footer">
+        <img src="{{ $base64 }}" alt="Logo">
+        PT. GATRA PERDANA TRUSTRUE | www.gatraperdanatrustrue.com | Page <span class="pagenum"></span>
+    </div>
+
+    <!-- Konten -->
+    <div class="content">
+        <div class="quotation-info">
             <h2 class="text-center" style="margin: 2px 0;">QUOTATION</h2>
 
             <table class="info-table no-border" style="font-size:10px;">
@@ -274,16 +286,7 @@
                 </tr>
             </table>
         </div>
-    </div>
 
-    <!-- Footer -->
-    <div class="footer">
-        <img src="{{ public_path('template/img/LOGO_Gatra1.png') }}" alt="Logo">
-        PT. GATRA PERDANA TRUSTRUE | www.gatraperdanatrustrue.com | Page <span class="pagenum"></span>
-    </div>
-
-    <!-- Konten -->
-    <div class="content">
         <table class="info-table2" style="margin-bottom:20px;">
             <thead>
                 <tr>
