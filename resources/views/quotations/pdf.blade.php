@@ -14,7 +14,7 @@
 
         /* Atur margin halaman sesuai tinggi header & footer */
         @page {
-            margin-top: 300px;
+            margin-top: 350px;
             /* tinggi header */
             margin-bottom: 80px;
             /* tinggi footer */
